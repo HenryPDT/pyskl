@@ -11,7 +11,7 @@ dependencies = [
     "chumpy>=0.70",
     "cycler>=0.12.1",
     "cython>=3.2.4",
-    "decorator<5.0",
+    "decorator>=5.0",
     "decord>=0.6.0",
     "fonttools>=4.62.1",
     "fvcore>=0.1.5.post20221221",
@@ -27,7 +27,7 @@ dependencies = [
     "mmcv-full==1.7.2",
     "mmdet==2.28.2",
     "mmpose==0.29.0",
-    "moviepy==1.0.3",
+    "moviepy>=2.1.1",
     "msgpack>=1.1.2",
     "msgpack-numpy>=0.4.8",
     "munkres>=1.1.4",
@@ -59,9 +59,10 @@ dependencies = [
     "typing-extensions>=4.15.0",
     "urllib3>=1.26.15",
     "xtcocotools>=1.14.3",
-    "yacs>=0.1.8",
+    "yacs==0.1.8",
     "yapf>=0.43.0",
     "nvidia-cudnn-cu12==9.1.0.70",
+    "ultralytics>=8.4.37",
 ]
 
 [tool.uv]

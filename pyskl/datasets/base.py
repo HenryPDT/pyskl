@@ -12,7 +12,9 @@ from mmcv.utils import print_log
 from torch.utils.data import Dataset
 
 from pyskl.smp import auto_mix2
-from ..core import mean_average_precision, mean_class_accuracy, top_k_accuracy
+from ..core import mean_average_precision, mean_class_accuracy, top_k_accuracy, \
+                top_k_accuracy_multilabel, compute_class_recall, print_recall_results, \
+                compute_multilabel_metrics, print_metrics
 from .pipelines import Compose
 
 
@@ -172,7 +174,7 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
                 metric_options['top_k_accuracy'], **deprecated_kwargs)
 
         metrics = metrics if isinstance(metrics, (list, tuple)) else [metrics]
-        allowed_metrics = ['top_k_accuracy', 'mean_class_accuracy', 'mean_average_precision']
+        allowed_metrics = ['top_k_accuracy', 'mean_class_accuracy', 'mean_average_precision', 'recall', 'f1']
 
         for metric in metrics:
             if metric not in allowed_metrics:
@@ -206,6 +208,29 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
                 print_log(log_msg, logger=logger)
                 continue
 
+            if metric == 'recall':
+                topk = metric_options.setdefault('compute_class_recall',
+                                                 {}).setdefault(
+                                                 'topk', (1,))
+                if not isinstance(topk, (int, tuple)):
+                    raise TypeError('topk must be int or tuple of int, '
+                                    f'but got {type(topk)}')
+                if isinstance(topk, int):
+                    topk = (topk, )
+
+                # top_k_acc = top_k_accuracy_multilabel(results, gt_labels, topk)
+                # log_msg = []
+                # for k, acc in zip(topk, top_k_acc):
+                #     eval_results[f'top{k}_acc'] = acc
+                #     log_msg.append(f'\ntop{k}_acc\t{acc:.4f}')
+                
+                recall_dict = compute_class_recall(results, gt_labels, self.num_classes, topk)
+                eval_results['overall_recall'] = recall_dict['overall_recall']
+                eval_results['mean_recall'] = recall_dict['mean_recall']
+                log_msg = print_recall_results(recall_dict, topk)
+                print_log(log_msg, logger=logger)
+                continue
+
             if metric == 'mean_class_accuracy':
                 mean_acc = mean_class_accuracy(results, gt_labels)
                 eval_results['mean_class_accuracy'] = mean_acc
@@ -221,6 +246,21 @@ class BaseDataset(Dataset, metaclass=ABCMeta):
                 mAP = mean_average_precision(results, gt_labels_arrays)
                 eval_results['mean_average_precision'] = mAP
                 log_msg = f'\nmean_average_precision\t{mAP:.4f}'
+                print_log(log_msg, logger=logger)
+                continue
+
+            if metric == 'f1':
+                result_dict = compute_multilabel_metrics(results, gt_labels, self.num_classes)
+                
+                eval_results['mean_f1'] = result_dict['mean_f1']
+                eval_results['mean_recall'] = result_dict['mean_recall']
+                eval_results['mean_precision'] = result_dict['mean_precision']
+
+                eval_results['overall_f1'] = result_dict['overall_f1']
+                eval_results['overall_recall'] = result_dict['overall_recall']
+                eval_results['overall_precision'] = result_dict['overall_precision']
+
+                log_msg = print_metrics(result_dict, label_map=range(self.num_classes))
                 print_log(log_msg, logger=logger)
                 continue
 

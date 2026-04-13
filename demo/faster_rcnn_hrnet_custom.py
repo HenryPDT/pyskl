@@ -1,6 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import argparse
-import cv2
 import mmcv
 import numpy as np
 import os
@@ -9,17 +8,18 @@ import shutil
 import torch
 import warnings
 from scipy.optimize import linear_sum_assignment
+import sys
+sys.path.append('.')
+from pyskl.utils.misc import load_video_info, analyze_video_data, print_analysis
+
+from ultralytics import YOLO
+import cv2
 
 from pyskl.apis import inference_recognizer, init_recognizer
 
 try:
     from mmdet.apis import inference_detector, init_detector
 except (ImportError, ModuleNotFoundError):
-    def inference_detector(*args, **kwargs):
-        pass
-
-    def init_detector(*args, **kwargs):
-        pass
     warnings.warn(
         'Failed to import `inference_detector` and `init_detector` from `mmdet.apis`. '
         'Make sure you can successfully import these if you want to use related features. '
@@ -28,15 +28,6 @@ except (ImportError, ModuleNotFoundError):
 try:
     from mmpose.apis import inference_top_down_pose_model, init_pose_model, vis_pose_result
 except (ImportError, ModuleNotFoundError):
-    def init_pose_model(*args, **kwargs):
-        pass
-
-    def inference_top_down_pose_model(*args, **kwargs):
-        pass
-
-    def vis_pose_result(*args, **kwargs):
-        pass
-
     warnings.warn(
         'Failed to import `init_pose_model`, `inference_top_down_pose_model`, `vis_pose_result` from '
         '`mmpose.apis`. Make sure you can successfully import these if you want to use related features. '
@@ -49,23 +40,24 @@ except ImportError:
     raise ImportError('Please install moviepy to enable output file')
 
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
-FONTSCALE = 0.75
-FONTCOLOR = (255, 255, 255)  # BGR, white
+FONTSCALE = 1
+FONTCOLOR = (0, 0, 255)  # BGR, white
 THICKNESS = 1
 LINETYPE = 1
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='PoseC3D demo')
-    parser.add_argument('video', help='video file/url')
-    parser.add_argument('out_filename', help='output filename')
+    parser.add_argument('--video', help='video file/url', default='data/tmp/openart-video_23b522ff_1755939662590.mp4')
+    parser.add_argument('--out_filename', help='output filename', default='output/openart1_cl48_2-person.mp4')
+    parser.add_argument('--out_dir', default='output/hrnet-2person')
     parser.add_argument(
         '--config',
-        default='configs/posec3d/slowonly_r50_ntu120_xsub/joint.py',
+        default='configs/stgcn++/stgcn++_ntu120_xsub_hrnet/j.py',
         help='skeleton action recognition config file path')
     parser.add_argument(
         '--checkpoint',
-        default='https://download.openmmlab.com/mmaction/pyskl/ckpt/posec3d/slowonly_r50_ntu120_xsub/joint.pth',
+        default='http://download.openmmlab.com/mmaction/pyskl/ckpt/stgcnpp/stgcnpp_ntu120_xsub_hrnet/j.pth',
         help='skeleton action recognition checkpoint file/url')
     parser.add_argument(
         '--det-config',
@@ -83,6 +75,7 @@ def parse_args():
     parser.add_argument(
         '--pose-checkpoint',
         default='https://download.openmmlab.com/mmpose/top_down/hrnet/hrnet_w32_coco_256x192-c78dce93_20200708.pth',
+        # default='https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/topdown_heatmap/coco/td-hm_hrnet-w32_8xb64-210e_coco-256x192-81c58e40_20220909.pth',
         help='human pose estimation checkpoint file/url')
     parser.add_argument(
         '--det-score-thr',
@@ -102,6 +95,16 @@ def parse_args():
         help='specify the short-side length of the image')
     args = parser.parse_args()
     return args
+
+
+def write_video(frames, out_filename, fps=24):
+    if isinstance(frames, str):
+        filenames = os.listdir(frames)
+        filenames = sorted(filenames, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+        frames = [cv2.imread(osp.join(frames, f)) for f in filenames]
+    vid = mpy.ImageSequenceClip([x[:, :, ::-1] for x in frames], fps=fps)
+    vid.write_videofile(out_filename, remove_temp=True)
+    return vid
 
 
 def frame_extraction(video_path, short_side):
@@ -124,7 +127,7 @@ def frame_extraction(video_path, short_side):
     while flag:
         if new_h is None:
             h, w, _ = frame.shape
-            new_w, new_h = mmcv.rescale_size((w, h), (short_side, np.inf))
+            new_w, new_h = mmcv.rescale_size((w, h), (short_side, np.Inf))
 
         frame = mmcv.imresize(frame, (new_w, new_h))
 
@@ -224,17 +227,22 @@ def pose_tracking(pose_results, max_tracks=2, thre=30):
     return result[..., :2], result[..., 2]
 
 
-def main():
-    args = parse_args()
+def play_video_with_pose(vis_frames, action_label, loop=10, fps=24):
+    """Play video frames with pose and action label superimposed, looping N times."""
+    delay = int(1000 / fps)
+    for _ in range(loop):
+        for frame in vis_frames:
+            # Overlay action label (already done, but ensure it's visible)
+            cv2.putText(frame, action_label, (10, 30), FONTFACE, FONTSCALE,
+                        FONTCOLOR, THICKNESS, LINETYPE)
+            cv2.imshow('Pose Estimation Playback', frame)
+            if cv2.waitKey(delay) & 0xFF == ord('q'):
+                cv2.destroyAllWindows()
+                return
+    cv2.destroyAllWindows()
 
-    frame_paths, original_frames = frame_extraction(args.video,
-                                                    args.short_side)
-    num_frame = len(frame_paths)
-    h, w, _ = original_frames[0].shape
 
-    config = mmcv.Config.fromfile(args.config)
-    config.data.test.pipeline = [x for x in config.data.test.pipeline if x['type'] != 'DecompressPose']
-    # Are we using GCN for Infernece?
+def action_recognition_inference(args, config, model, video_info):
     GCN_flag = 'GCN' in config.model.type
     GCN_nperson = None
     if GCN_flag:
@@ -243,16 +251,23 @@ def main():
         # the default arg of FormatGCNInput
         GCN_nperson = format_op.get('num_person', 2)
 
-    model = init_recognizer(config, args.checkpoint, args.device)
-
     # Load label_map
     label_map = [x.strip() for x in open(args.label_map).readlines()]
 
+    out_dir = osp.join(args.out_dir, video_info['frame_dir'].split('/')[-2])
+    os.makedirs(out_dir, exist_ok=True)
+    out_filename = osp.join(out_dir, video_info['frame_dir'].split('/')[-1])
+
+    frame_paths, original_frames = frame_extraction(video_info['frame_dir'],
+                                                    args.short_side)
+    num_frame = len(frame_paths)
+    h, w, _ = original_frames[0].shape
+
     # Get Human detection results
-    det_results = detection_inference(args, frame_paths)
+    det_results = detection_inference(args, frame_paths) # list[np.ndarray(num_person, 5)], len = num_frame
     torch.cuda.empty_cache()
 
-    pose_results = pose_inference(args, frame_paths, det_results)
+    pose_results = pose_inference(args, frame_paths, det_results) # list[list[dict{'bbox':array(5), 'keypoints':array(17,3)}]], len = num_frame
     torch.cuda.empty_cache()
 
     fake_anno = dict(
@@ -298,15 +313,46 @@ def main():
         vis_pose_result(pose_model, frame_paths[i], pose_results[i])
         for i in range(num_frame)
     ]
+
+    # tracking_poses = []
+    # for i in range(num_frame):
+    #     # poses = [{"keypoints": np.concatenate((keypoint[p][i], keypoint_score[p][i].reshape(-1, 1)), axis=1)} for p in range(keypoint.shape[0])]
+    #     poses = [{"keypoints": np.concatenate((keypoint[p][i], keypoint_score[p][i].reshape(-1, 1)), axis=1)} for p in range(2)]
+    #     tracking_poses.append(poses)
+    # vis_frames = [
+    #     vis_pose_result(pose_model, frame_paths[i], tracking_poses[i])
+    #     for i in range(num_frame)
+    # ]
+
     for frame in vis_frames:
         cv2.putText(frame, action_label, (10, 30), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)
 
-    vid = mpy.ImageSequenceClip([x[:, :, ::-1] for x in vis_frames], fps=24)
-    vid.write_videofile(args.out_filename, remove_temp=True)
+    vid = mpy.ImageSequenceClip([x[:, :, ::-1] for x in vis_frames], fps=video_info['fps'])
+    vid.write_videofile(out_filename, remove_temp=True)
 
     tmp_frame_dir = osp.dirname(frame_paths[0])
     shutil.rmtree(tmp_frame_dir)
+
+
+def main():
+    args = parse_args()
+
+    config = mmcv.Config.fromfile(args.config)
+    config.data.test.pipeline = [x for x in config.data.test.pipeline if x['type'] != 'DecompressPose']
+
+    model = init_recognizer(config, args.checkpoint, args.device)
+
+    video_infos = load_video_info(dir_path="data/DTC/AI-videos-selective")
+    # # analyze video infos
+    # result = analyze_video_data(video_infos)
+    # print_analysis(results=result)
+
+    for video_info in video_infos:
+        video_path = video_info['frame_dir'] # 'data/DTC/AI-videos-selective/jump-flap-lie/openart-video_d20266ad_17555.mp4'
+        print(f'Processing video: {video_path}')
+        action_recognition_inference(args, config, model, video_info)
+
 
 
 if __name__ == '__main__':
