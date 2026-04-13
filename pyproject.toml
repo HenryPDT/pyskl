@@ -1,0 +1,94 @@
+[project]
+name = "pyskl"
+version = "0.1.0"
+description = "A Toolbox for skeleton-based action recognition"
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "addict>=2.4.0",
+    "chardet>=7.4.1",
+    "charset-normalizer>=3.4.7",
+    "chumpy>=0.70",
+    "cycler>=0.12.1",
+    "cython>=3.2.4",
+    "decorator<5.0",
+    "decord>=0.6.0",
+    "fonttools>=4.62.1",
+    "fvcore>=0.1.5.post20221221",
+    "imageio>=2.37.3",
+    "imageio-ffmpeg>=0.6.0",
+    "iopath>=0.1.10",
+    "ipython>=8.39.0",
+    "jedi>=0.19.2",
+    "json-tricks>=3.17.3",
+    "kiwisolver>=1.5.0",
+    "matplotlib>=3.10.8",
+    "matplotlib-inline>=0.2.1",
+    "mmcv-full==1.7.2",
+    "mmdet==2.28.2",
+    "mmpose==0.29.0",
+    "moviepy==1.0.3",
+    "msgpack>=1.1.2",
+    "msgpack-numpy>=0.4.8",
+    "munkres>=1.1.4",
+    "numpy>=1.26.4,<2.0.0",
+    "opencv-python>=4.8.1.78",
+    "packaging>=26.0",
+    "pillow>=11.3.0",
+    "portalocker>=3.2.0",
+    "proglog>=0.1.12",
+    "prompt-toolkit>=3.0.52",
+    "pycocotools>=2.0.11",
+    "pygments>=2.20.0",
+    "pyparsing>=3.3.2",
+    "python-dateutil>=2.9.0.post0",
+    "pytorch-lightning>=2.2.5",
+    "pyyaml>=6.0.3",
+    "requests>=2.33.1",
+    "scipy>=1.15.3",
+    "setuptools<81.0",
+    "six>=1.17.0",
+    "tabulate>=0.10.0",
+    "termcolor>=3.3.0",
+    "terminaltables>=3.1.10",
+    "torch==2.1.0+cu121",
+    "torchaudio==2.1.0+cu121",
+    "torchvision==0.16.0+cu121",
+    "tqdm>=4.67.3",
+    "traitlets>=5.14.3",
+    "typing-extensions>=4.15.0",
+    "urllib3>=1.26.15",
+    "xtcocotools>=1.14.3",
+    "yacs>=0.1.8",
+    "yapf>=0.43.0",
+    "nvidia-cudnn-cu12==9.1.0.70",
+]
+
+[tool.uv]
+managed = true
+package = true
+index-strategy = "unsafe-best-match"
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[[tool.uv.index]]
+name = "openmmlab"
+url = "https://download.openmmlab.com/mmcv/dist/cu121/torch2.1.0/index.html"
+type = "find-links"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch" }
+torchvision = { index = "pytorch" }
+torchaudio = { index = "pytorch" }
+mmcv-full = { url = "https://download.openmmlab.com/mmcv/dist/cu121/torch2.1.0/mmcv_full-1.7.2-cp310-cp310-manylinux1_x86_64.whl" }
+
+[tool.uv.extra-build-dependencies]
+chumpy = ["pip", "setuptools", "wheel"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

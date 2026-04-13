@@ -46,24 +46,26 @@ This repo is the official implementation of [PoseConv3D](https://arxiv.org/abs/2
 - [x] [FineGYM (CVPR 2020)](https://arxiv.org/abs/2004.06704)
 - [x] [Diving48 (ECCV 2018)](https://openaccess.thecvf.com/content_ECCV_2018/papers/Yingwei_Li_RESOUND_Towards_Action_ECCV_2018_paper.pdf)
 
-## Installation
+## Installation (Modern/Fast)
+
+The recommended way to install PYSKL is using **`uv`**. This ensures all dependencies (PyTorch 2.1, MMCV-full 1.7.2, etc.) are perfectly matched and isolated.
+
 ```shell
 git clone https://github.com/kennymckormick/pyskl.git
 cd pyskl
-# This command runs well with conda 22.9.0, if you are running an early conda version and got some errors, try to update your conda first
-conda env create -f pyskl.yaml
-conda activate pyskl
-pip install -e .
+
+# 1. Recreate the environment exactly from the lockfile
+uv sync
+
+# 2. Supercharge your activation script (one-time setup)
+# This automates the GPU library paths so everything "just works" on activation
+echo 'export LD_LIBRARY_PATH="$VIRTUAL_ENV/lib/python3.10/site-packages/torch/lib:$LD_LIBRARY_PATH"' >> .venv/bin/activate
+
+# 3. Activate and run
+source .venv/bin/activate
 ```
 
-## Installation Python 3.10
-```shell
-git clone https://github.com/kennymckormick/pyskl.git
-cd pyskl
-conda env create -f pyskl_310.yaml
-conda activate pyskl
-pip install -e .
-```
+For more details on why we use this setup, see **[REPRODUCE.md](REPRODUCE.md)**.
 
 ## Demo
 
